@@ -92,10 +92,8 @@ for i in range(len(xs) - 1):
 
 plt.figure(figsize=(10, 5))
 plt.plot(x_plot, y_plot, label="Функция")
-plt.plot(broken_x, broken_y, "--", color="green",
-         label="Итоговая ломаная")
-plt.scatter(x_min, f_min, color="red", s=60,
-            label="Найденный минимум", zorder=3)
+plt.plot(broken_x, broken_y, "--", color="green",label="Итоговая ломаная")
+plt.scatter(x_min, f_min, color="red", s=60,label="Найденный минимум", zorder=3)
 
 plt.xlabel("x")
 plt.ylabel("f(x)")
