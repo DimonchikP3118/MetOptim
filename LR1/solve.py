@@ -19,6 +19,7 @@ def read_data(file_name):
 
     for line in lines[2:]:
         raw = line.split()
+
         if raw[0] == 'free':
             for value in raw[1:]:
                 j = int(value) - 1
@@ -45,7 +46,6 @@ def to_canonical(table, n_vars):
         if len(coeffs) != n_vars or sign not in ('=', '<=', '>='):
             raise ValueError("Неверная запись ограничения")
         row = list(coeffs) + [0.0] * extra_count
-
         if sign != '=':
             row[n_vars + extra] = 1.0 if sign == '<=' else -1.0
             extra += 1
@@ -71,63 +71,112 @@ def find_basis(A):
                 abs(A[k, j]) < EPS for k in range(m) if k != i):
                 found = j
                 break
+
         if found is None:
             return None
+
         basis.append(found)
         used.add(found)
     return basis
 
-def has_identity_basis(A):
-    return find_basis(A) is not None
+def prepare_basis(A, b, basis):
+    T = np.array(A, dtype=float).copy()
+    rhs = np.array(b, dtype=float).copy()
+    m = len(rhs)
+
+    if len(basis) != m:
+        raise ValueError("Неполный базис")
+    # Приводим базисные столбцы к единичной матрице
+    for i, j in enumerate(basis):
+        k = i + np.argmax(np.abs(T[i:, j]))
+        if abs(T[k, j]) <= EPS:
+            raise ValueError("Вырожденная базисная матрица")
+
+        T[[i, k]] = T[[k, i]]
+        rhs[[i, k]] = rhs[[k, i]]
+
+        pivot = T[i, j]
+        T[i] /= pivot
+        rhs[i] /= pivot
+
+        for k in range(m):
+            if k != i:
+                factor = T[k, j]
+                T[k] -= factor * T[i]
+                rhs[k] -= factor * rhs[i]
+    return T, rhs
 
 def simplex(c, A, b, basis, max_iter=10000):
     c = np.array(c, dtype=float)
-    A = np.array(A, dtype=float)
-    b = np.array(b, dtype=float)
     basis = list(basis)
-    m, n = A.shape
+    n = len(c)
+    # Индексы небазисных переменных
+    free = [j for j in range(n) if j not in basis]
+
+    T, rhs = prepare_basis(A, b, basis)
+    # Блоки компактной таблицы:
+    # M — коэффициенты, rhs — правые части,
+    # p — оценки, -Q — правый нижний элемент
+    M = T[:, free].copy()
+    p = c[free] - c[basis] @ M
+    Q = float(c[basis] @ rhs)
+
     for _ in range(max_iter):
-        B = A[:, basis]
-        xB = np.linalg.solve(B, b)
-        if np.any(xB < -EPS):
+        if np.any(rhs < -EPS):
             raise ValueError("Получен недопустимый базис")
-        xB[np.abs(xB) < EPS] = 0.0
-        cB = c[basis]
-        y = np.linalg.solve(B.T, cB)
-        reduced = c - A.T @ y
-        # Выбираем переменную с наименьшим подходящим индексом
-        entering = next(
-            (j for j in range(n)
-                if j not in basis and reduced[j] < -EPS),None)
-        if entering is None:
+        rhs[np.abs(rhs) < EPS] = 0.0
+        # Если отрицательных оценок нет, найден минимум
+        if len(p) == 0 or np.min(p) >= -EPS:
             x = np.zeros(n)
-            x[basis] = xB
-            return x, float(c @ x), basis
+            x[basis] = rhs
+            return x, Q, basis
+        # Минимальная отрицательная оценка
+        j = int(np.argmin(p))
+        # Выбор разрешающей строки
+        candidates = [i for i in range(len(rhs)) if M[i, j] > EPS]
 
-        d = np.linalg.solve(B, A[:, entering])
-
-        candidates = [i for i in range(m) if d[i] > EPS]
         if not candidates:
             return None, None, None
+        i = min(candidates,key=lambda k: rhs[k] / M[k, j])
 
-        min_ratio = min(xB[i] / d[i] for i in candidates)
-        tied = [
-            i for i in candidates
-            if abs(xB[i] / d[i] - min_ratio) <= EPS
-        ]
+        # Старые значения разрешающего креста
+        pivot = M[i, j]
+        row = M[i].copy()
+        col = M[:, j].copy()
+        old_b = rhs[i]
+        old_p = p[j]
 
-        leaving_idx = min(tied, key=lambda i: basis[i])
-        basis[leaving_idx] = entering
+        # Пересчёт остальных элементов
+        M -= np.outer(col, row) / pivot
+
+        # Пересчёт разрешающей строки и столбца
+        M[i] = row / pivot
+        M[:, j] = -col / pivot
+        M[i, j] = 1.0 / pivot
+
+        # Пересчёт правых частей
+        rhs -= col * old_b / pivot
+        rhs[i] = old_b / pivot
+
+        # Пересчёт оценок и значения функции
+        p -= old_p * row / pivot
+        p[j] = -old_p / pivot
+        Q += old_p * old_b / pivot
+
+        # Обмен базисной и небазисной переменных
+        basis[i], free[j] = free[j], basis[i]
     raise RuntimeError("Превышено число итераций")
 
 def solve_lp(is_max, func_coeffs, table, free_vars=None):
     try:
         n = len(func_coeffs)
         free_vars = sorted(set(free_vars or []))
+
         if not n or any(j < 0 or j >= n for j in free_vars):
             raise ValueError("Неверные данные о переменных")
-        coeffs = list(func_coeffs) + [
-            -func_coeffs[j] for j in free_vars]
+
+        # Свободная переменная: xj = uj - vj
+        coeffs = list(func_coeffs) + [-func_coeffs[j] for j in free_vars]
         expanded = []
 
         for row, sign, b in table:
@@ -136,15 +185,13 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
             new_row = list(row) + [-row[j] for j in free_vars]
             expanded.append((new_row, sign, b))
 
-        rows, b_col, total_vars = to_canonical(
-            expanded, len(coeffs))
+        rows, b_col, total_vars = to_canonical(expanded, len(coeffs))
 
-        A = np.array(rows, dtype=float).reshape(
-            len(rows), total_vars)
+        A = np.array(rows, dtype=float).reshape(len(rows), total_vars)
         b = np.array(b_col, dtype=float)
+
         c = np.array(
-            coeffs + [0.0] * (total_vars - len(coeffs)),
-            dtype=float)
+            coeffs + [0.0] * (total_vars - len(coeffs)),dtype=float)
 
         if not (
             np.all(np.isfinite(A))
@@ -154,24 +201,26 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
 
         if is_max:
             c = -c
-        if not has_identity_basis(A):
+
+        basis = find_basis(A)
+
+        if basis is None:
+            # Вспомогательная задача
             m = len(b)
             A_aux = np.hstack([A, np.eye(m)])
             c_aux = np.r_[np.zeros(total_vars), np.ones(m)]
             basis_aux = list(range(total_vars, total_vars + m))
-            _, W_aux, basis = simplex(
-                c_aux, A_aux, b, basis_aux)
+
+            _, W_aux, basis = simplex(c_aux, A_aux, b, basis_aux)
 
             if W_aux is None:
-                raise ValueError(
-                    "Не удалось решить вспомогательную задачу")
+                raise ValueError("Не удалось решить вспомогательную задачу")
+
             if W_aux > EPS:
                 return None, None, "Область допустимых решений пуста"
-            # Приводим систему к найденному базису
-            B = A_aux[:, basis]
-            T = np.linalg.solve(B, A_aux)
-            rhs = np.linalg.solve(B, b)
 
+            T, rhs = prepare_basis(A_aux, b, basis)
+            # Выводим оставшиеся искусственные переменные из базиса
             i = 0
 
             while i < len(basis):
@@ -180,17 +229,20 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
                     continue
                 if abs(rhs[i]) > EPS:
                     return None, None, "Область допустимых решений пуста"
+
                 rhs[i] = 0.0
 
                 j = next(
                     (j for j in range(total_vars)
-                        if j not in basis and abs(T[i, j]) > EPS),None)
+                        if j not in basis and abs(T[i, j]) > EPS), None)
+
                 if j is None:
+                    # Зависимое ограничение: 0 = 0
                     T = np.delete(T, i, axis=0)
                     rhs = np.delete(rhs, i)
                     basis.pop(i)
                     continue
-                # Выводим искусственную переменную из базиса
+
                 pivot = T[i, j]
                 T[i] /= pivot
                 rhs[i] /= pivot
@@ -200,34 +252,35 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
                         factor = T[k, j]
                         T[k] -= factor * T[i]
                         rhs[k] -= factor * rhs[i]
+
                 basis[i] = j
                 i += 1
-            # Удаляем искусственные столбцы после очистки базиса
+
+            # Удаляем искусственные столбцы
             A = T[:, :total_vars]
             b = rhs
-        else:
-            basis = find_basis(A)
+
+        # Основная задача
         x, W, _ = simplex(c, A, b, basis)
+
         if x is None:
             return None, None, "Целевая функция не ограничена"
-        # Восстанавливаем исходные свободные переменные
-        result = x[:n].copy()
 
+        # Восстанавливаем исходные переменные
+        result = x[:n].copy()
         for k, j in enumerate(free_vars):
             result[j] -= x[n + k]
 
         result[np.abs(result) < EPS] = 0.0
         Z = -W if is_max else W
         return result, Z, None
-
-    except (ValueError, RuntimeError, np.linalg.LinAlgError) as e:
+    except (ValueError, RuntimeError) as e:
         return None, None, str(e)
 
 try:
     is_max, func_coeffs, table, free_vars = read_data('data.txt')
 
-    x, Z, err = solve_lp(
-        is_max, func_coeffs, table, free_vars)
+    x, Z, err = solve_lp(is_max, func_coeffs, table, free_vars)
 
     if err:
         print("Ошибка:", err)
