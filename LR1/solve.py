@@ -3,6 +3,7 @@ import numpy as np
 np.set_printoptions(precision=4, suppress=True)
 EPS = 1e-9
 
+
 def read_data(file_name):
     with open(file_name, encoding='utf-8') as f:
         lines = [line.strip() for line in f if line.strip()]
@@ -27,6 +28,7 @@ def read_data(file_name):
                     raise ValueError("Неверный номер свободной переменной")
                 free_vars.add(j)
             continue
+
         if len(raw) != n + 2 or raw[-2] not in ('=', '>=', '<='):
             raise ValueError("Неверная запись ограничения")
 
@@ -34,7 +36,9 @@ def read_data(file_name):
         sign = raw[-2]
         b = float(raw[-1])
         table.append((coeffs, sign, b))
+
     return is_max, func_coeffs, table, free_vars
+
 
 def to_canonical(table, n_vars):
     extra_count = sum(sign != '=' for _, sign, _ in table)
@@ -45,17 +49,23 @@ def to_canonical(table, n_vars):
     for coeffs, sign, b in table:
         if len(coeffs) != n_vars or sign not in ('=', '<=', '>='):
             raise ValueError("Неверная запись ограничения")
+
         row = list(coeffs) + [0.0] * extra_count
+
         if sign != '=':
             row[n_vars + extra] = 1.0 if sign == '<=' else -1.0
             extra += 1
-        # Правая часть каждого равенства должна быть неотрицательной
+
+        # Правая часть равенства должна быть неотрицательной
         if b < 0:
             row = [-v for v in row]
             b = -b
+
         rows.append(row)
         b_col.append(b)
+
     return rows, b_col, n_vars + extra_count
+
 
 def find_basis(A):
     m, n = A.shape
@@ -64,11 +74,14 @@ def find_basis(A):
 
     for i in range(m):
         found = None
+
         for j in range(n):
             if j in used:
                 continue
+
             if abs(A[i, j] - 1.0) < EPS and all(
-                abs(A[k, j]) < EPS for k in range(m) if k != i):
+                abs(A[k, j]) < EPS for k in range(m) if k != i
+            ):
                 found = j
                 break
 
@@ -77,7 +90,9 @@ def find_basis(A):
 
         basis.append(found)
         used.add(found)
+
     return basis
+
 
 def prepare_basis(A, b, basis):
     T = np.array(A, dtype=float).copy()
@@ -86,9 +101,11 @@ def prepare_basis(A, b, basis):
 
     if len(basis) != m:
         raise ValueError("Неполный базис")
+
     # Приводим базисные столбцы к единичной матрице
     for i, j in enumerate(basis):
         k = i + np.argmax(np.abs(T[i:, j]))
+
         if abs(T[k, j]) <= EPS:
             raise ValueError("Вырожденная базисная матрица")
 
@@ -104,61 +121,96 @@ def prepare_basis(A, b, basis):
                 factor = T[k, j]
                 T[k] -= factor * T[i]
                 rhs[k] -= factor * rhs[i]
+
     return T, rhs
+
 
 def simplex(c, A, b, basis, max_iter=10000):
     c = np.array(c, dtype=float)
     basis = list(basis)
     n = len(c)
+
     # Индексы небазисных переменных
     free = [j for j in range(n) if j not in basis]
 
     T, rhs = prepare_basis(A, b, basis)
+
+    # Блоки компактной таблицы:
     # M — коэффициенты, rhs — правые части,
     # p — оценки, -Q — правый нижний элемент
     M = T[:, free].copy()
     p = c[free] - c[basis] @ M
     Q = float(c[basis] @ rhs)
 
+    # Для лексикографического выбора разрешающей строки
+    R = np.eye(len(rhs))
+
     for _ in range(max_iter):
         if np.any(rhs < -EPS):
             raise ValueError("Получен недопустимый базис")
+
         rhs[np.abs(rhs) < EPS] = 0.0
+
         # Если отрицательных оценок нет, найден минимум
         if len(p) == 0 or np.min(p) >= -EPS:
             x = np.zeros(n)
             x[basis] = rhs
             return x, Q, basis
+
         # Минимальная отрицательная оценка
         j = int(np.argmin(p))
-        # Выбор разрешающей строки
-        candidates = [i for i in range(len(rhs)) if M[i, j] > EPS]
+
+        candidates = [
+            i for i in range(len(rhs)) if M[i, j] > EPS
+        ]
 
         if not candidates:
             return None, None, None
-        i = min(candidates,key=lambda k: rhs[k] / M[k, j])
-        
+
+        # Сначала сравниваем отношения правых частей.
+        # При равенстве используем дополнительные компоненты R.
+        i = min(
+            candidates,
+            key=lambda k: (
+                rhs[k] / M[k, j],
+                *tuple(R[k] / M[k, j])
+            )
+        )
+
+        # Старые значения разрешающего креста
         pivot = M[i, j]
         row = M[i].copy()
         col = M[:, j].copy()
         old_b = rhs[i]
         old_p = p[j]
-        # Пересчёт остальных элементов
+        old_R = R[i].copy()
+
+        # Метод прямоугольника для остальных элементов
         M -= np.outer(col, row) / pivot
-        
+
+        # Разрешающая строка, столбец и элемент
         M[i] = row / pivot
         M[:, j] = -col / pivot
         M[i, j] = 1.0 / pivot
-        
+
+        # Правые части
         rhs -= col * old_b / pivot
         rhs[i] = old_b / pivot
 
+        # Оценки и значение целевой функции
         p -= old_p * row / pivot
         p[j] = -old_p / pivot
         Q += old_p * old_b / pivot
 
+        # Пересчёт вспомогательной матрицы
+        R -= np.outer(col, old_R) / pivot
+        R[i] = old_R / pivot
+
+        # Обмен базисной и небазисной переменных
         basis[i], free[j] = free[j], basis[i]
+
     raise RuntimeError("Превышено число итераций")
+
 
 def solve_lp(is_max, func_coeffs, table, free_vars=None):
     try:
@@ -167,28 +219,40 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
 
         if not n or any(j < 0 or j >= n for j in free_vars):
             raise ValueError("Неверные данные о переменных")
+
         # Свободная переменная: xj = uj - vj
-        coeffs = list(func_coeffs) + [-func_coeffs[j] for j in free_vars]
+        coeffs = list(func_coeffs) + [
+            -func_coeffs[j] for j in free_vars
+        ]
+
         expanded = []
 
         for row, sign, b in table:
             if len(row) != n:
                 raise ValueError("Неверное количество коэффициентов")
+
             new_row = list(row) + [-row[j] for j in free_vars]
             expanded.append((new_row, sign, b))
 
-        rows, b_col, total_vars = to_canonical(expanded, len(coeffs))
+        rows, b_col, total_vars = to_canonical(
+            expanded, len(coeffs)
+        )
 
-        A = np.array(rows, dtype=float).reshape(len(rows), total_vars)
+        A = np.array(rows, dtype=float).reshape(
+            len(rows), total_vars
+        )
         b = np.array(b_col, dtype=float)
 
         c = np.array(
-            coeffs + [0.0] * (total_vars - len(coeffs)),dtype=float)
+            coeffs + [0.0] * (total_vars - len(coeffs)),
+            dtype=float
+        )
 
         if not (
             np.all(np.isfinite(A))
             and np.all(np.isfinite(b))
-            and np.all(np.isfinite(c))):
+            and np.all(np.isfinite(c))
+        ):
             raise ValueError("Коэффициенты должны быть конечными числами")
 
         if is_max:
@@ -203,30 +267,40 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
             c_aux = np.r_[np.zeros(total_vars), np.ones(m)]
             basis_aux = list(range(total_vars, total_vars + m))
 
-            _, W_aux, basis = simplex(c_aux, A_aux, b, basis_aux)
+            _, W_aux, basis = simplex(
+                c_aux, A_aux, b, basis_aux
+            )
 
             if W_aux is None:
-                raise ValueError("Не удалось решить вспомогательную задачу")
+                raise ValueError(
+                    "Не удалось решить вспомогательную задачу"
+                )
 
             if W_aux > EPS:
                 return None, None, "Область допустимых решений пуста"
 
             T, rhs = prepare_basis(A_aux, b, basis)
-            # Выводим оставшиеся искусственные переменные из базиса
+
+            # Выводим искусственные переменные из базиса
             i = 0
 
             while i < len(basis):
                 if basis[i] < total_vars:
                     i += 1
                     continue
+
                 if abs(rhs[i]) > EPS:
                     return None, None, "Область допустимых решений пуста"
 
                 rhs[i] = 0.0
 
                 j = next(
-                    (j for j in range(total_vars)
-                        if j not in basis and abs(T[i, j]) > EPS), None)
+                    (
+                        j for j in range(total_vars)
+                        if j not in basis and abs(T[i, j]) > EPS
+                    ),
+                    None
+                )
 
                 if j is None:
                     # Зависимое ограничение: 0 = 0
@@ -260,19 +334,25 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
 
         # Восстанавливаем исходные переменные
         result = x[:n].copy()
+
         for k, j in enumerate(free_vars):
             result[j] -= x[n + k]
 
         result[np.abs(result) < EPS] = 0.0
         Z = -W if is_max else W
+
         return result, Z, None
+
     except (ValueError, RuntimeError) as e:
         return None, None, str(e)
+
 
 try:
     is_max, func_coeffs, table, free_vars = read_data('data.txt')
 
-    x, Z, err = solve_lp(is_max, func_coeffs, table, free_vars)
+    x, Z, err = solve_lp(
+        is_max, func_coeffs, table, free_vars
+    )
 
     if err:
         print("Ошибка:", err)
