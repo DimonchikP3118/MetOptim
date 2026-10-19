@@ -114,7 +114,6 @@ def simplex(c, A, b, basis, max_iter=10000):
     free = [j for j in range(n) if j not in basis]
 
     T, rhs = prepare_basis(A, b, basis)
-    # Блоки компактной таблицы:
     # M — коэффициенты, rhs — правые части,
     # p — оценки, -Q — правый нижний элемент
     M = T[:, free].copy()
@@ -138,32 +137,26 @@ def simplex(c, A, b, basis, max_iter=10000):
         if not candidates:
             return None, None, None
         i = min(candidates,key=lambda k: rhs[k] / M[k, j])
-
-        # Старые значения разрешающего креста
+        
         pivot = M[i, j]
         row = M[i].copy()
         col = M[:, j].copy()
         old_b = rhs[i]
         old_p = p[j]
-
         # Пересчёт остальных элементов
         M -= np.outer(col, row) / pivot
-
-        # Пересчёт разрешающей строки и столбца
+        
         M[i] = row / pivot
         M[:, j] = -col / pivot
         M[i, j] = 1.0 / pivot
-
-        # Пересчёт правых частей
+        
         rhs -= col * old_b / pivot
         rhs[i] = old_b / pivot
 
-        # Пересчёт оценок и значения функции
         p -= old_p * row / pivot
         p[j] = -old_p / pivot
         Q += old_p * old_b / pivot
 
-        # Обмен базисной и небазисной переменных
         basis[i], free[j] = free[j], basis[i]
     raise RuntimeError("Превышено число итераций")
 
@@ -174,7 +167,6 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
 
         if not n or any(j < 0 or j >= n for j in free_vars):
             raise ValueError("Неверные данные о переменных")
-
         # Свободная переменная: xj = uj - vj
         coeffs = list(func_coeffs) + [-func_coeffs[j] for j in free_vars]
         expanded = []
