@@ -102,7 +102,6 @@ def prepare_basis(A, b, basis):
     if len(basis) != m:
         raise ValueError("Неполный базис")
 
-    # Приводим базисные столбцы к единичной матрице
     for i, j in enumerate(basis):
         k = i + np.argmax(np.abs(T[i:, j]))
 
@@ -135,14 +134,10 @@ def simplex(c, A, b, basis, max_iter=10000):
 
     T, rhs = prepare_basis(A, b, basis)
 
-    # Блоки компактной таблицы:
-    # M — коэффициенты, rhs — правые части,
-    # p — оценки, -Q — правый нижний элемент
     M = T[:, free].copy()
     p = c[free] - c[basis] @ M
     Q = float(c[basis] @ rhs)
 
-    # Для лексикографического выбора разрешающей строки
     R = np.eye(len(rhs))
 
     for _ in range(max_iter):
@@ -151,7 +146,6 @@ def simplex(c, A, b, basis, max_iter=10000):
 
         rhs[np.abs(rhs) < EPS] = 0.0
 
-        # Если отрицательных оценок нет, найден минимум
         if len(p) == 0 or np.min(p) >= -EPS:
             x = np.zeros(n)
             x[basis] = rhs
@@ -167,8 +161,6 @@ def simplex(c, A, b, basis, max_iter=10000):
         if not candidates:
             return None, None, None
 
-        # Сначала сравниваем отношения правых частей.
-        # При равенстве используем дополнительные компоненты R.
         i = min(
             candidates,
             key=lambda k: (
@@ -177,7 +169,6 @@ def simplex(c, A, b, basis, max_iter=10000):
             )
         )
 
-        # Старые значения разрешающего креста
         pivot = M[i, j]
         row = M[i].copy()
         col = M[:, j].copy()
@@ -206,7 +197,6 @@ def simplex(c, A, b, basis, max_iter=10000):
         R -= np.outer(col, old_R) / pivot
         R[i] = old_R / pivot
 
-        # Обмен базисной и небазисной переменных
         basis[i], free[j] = free[j], basis[i]
 
     raise RuntimeError("Превышено число итераций")
@@ -220,7 +210,6 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
         if not n or any(j < 0 or j >= n for j in free_vars):
             raise ValueError("Неверные данные о переменных")
 
-        # Свободная переменная: xj = uj - vj
         coeffs = list(func_coeffs) + [
             -func_coeffs[j] for j in free_vars
         ]
@@ -303,7 +292,6 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
                 )
 
                 if j is None:
-                    # Зависимое ограничение: 0 = 0
                     T = np.delete(T, i, axis=0)
                     rhs = np.delete(rhs, i)
                     basis.pop(i)
