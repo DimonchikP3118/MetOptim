@@ -80,8 +80,7 @@ def find_basis(A):
                 continue
 
             if abs(A[i, j] - 1.0) < EPS and all(
-                abs(A[k, j]) < EPS for k in range(m) if k != i
-            ):
+                abs(A[k, j]) < EPS for k in range(m) if k != i):
                 found = j
                 break
 
@@ -92,7 +91,6 @@ def find_basis(A):
         used.add(found)
 
     return basis
-
 
 def prepare_basis(A, b, basis):
     T = np.array(A, dtype=float).copy()
@@ -154,20 +152,12 @@ def simplex(c, A, b, basis, max_iter=10000):
         # Минимальная отрицательная оценка
         j = int(np.argmin(p))
 
-        candidates = [
-            i for i in range(len(rhs)) if M[i, j] > EPS
-        ]
+        candidates = [i for i in range(len(rhs)) if M[i, j] > EPS]
 
         if not candidates:
             return None, None, None
 
-        i = min(
-            candidates,
-            key=lambda k: (
-                rhs[k] / M[k, j],
-                *tuple(R[k] / M[k, j])
-            )
-        )
+        i = min(candidates, key=lambda k: (rhs[k] / M[k, j], *tuple(R[k] / M[k, j])))
 
         pivot = M[i, j]
         row = M[i].copy()
@@ -210,9 +200,7 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
         if not n or any(j < 0 or j >= n for j in free_vars):
             raise ValueError("Неверные данные о переменных")
 
-        coeffs = list(func_coeffs) + [
-            -func_coeffs[j] for j in free_vars
-        ]
+        coeffs = list(func_coeffs) + [-func_coeffs[j] for j in free_vars]
 
         expanded = []
 
@@ -223,25 +211,14 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
             new_row = list(row) + [-row[j] for j in free_vars]
             expanded.append((new_row, sign, b))
 
-        rows, b_col, total_vars = to_canonical(
-            expanded, len(coeffs)
-        )
+        rows, b_col, total_vars = to_canonical(expanded, len(coeffs))
 
-        A = np.array(rows, dtype=float).reshape(
-            len(rows), total_vars
-        )
+        A = np.array(rows, dtype=float).reshape(len(rows), total_vars)
         b = np.array(b_col, dtype=float)
 
-        c = np.array(
-            coeffs + [0.0] * (total_vars - len(coeffs)),
-            dtype=float
-        )
+        c = np.array(coeffs + [0.0] * (total_vars - len(coeffs)), dtype=float)
 
-        if not (
-            np.all(np.isfinite(A))
-            and np.all(np.isfinite(b))
-            and np.all(np.isfinite(c))
-        ):
+        if not (np.all(np.isfinite(A)) and np.all(np.isfinite(b)) and np.all(np.isfinite(c))):
             raise ValueError("Коэффициенты должны быть конечными числами")
 
         if is_max:
@@ -256,14 +233,10 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
             c_aux = np.r_[np.zeros(total_vars), np.ones(m)]
             basis_aux = list(range(total_vars, total_vars + m))
 
-            _, W_aux, basis = simplex(
-                c_aux, A_aux, b, basis_aux
-            )
+            _, W_aux, basis = simplex(c_aux, A_aux, b, basis_aux)
 
             if W_aux is None:
-                raise ValueError(
-                    "Не удалось решить вспомогательную задачу"
-                )
+                raise ValueError("Не удалось решить вспомогательную задачу")
 
             if W_aux > EPS:
                 return None, None, "Область допустимых решений пуста"
@@ -283,13 +256,7 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
 
                 rhs[i] = 0.0
 
-                j = next(
-                    (
-                        j for j in range(total_vars)
-                        if j not in basis and abs(T[i, j]) > EPS
-                    ),
-                    None
-                )
+                j = next((j for j in range(total_vars) if j not in basis and abs(T[i, j]) > EPS), None)
 
                 if j is None:
                     T = np.delete(T, i, axis=0)
@@ -338,9 +305,7 @@ def solve_lp(is_max, func_coeffs, table, free_vars=None):
 try:
     is_max, func_coeffs, table, free_vars = read_data('data.txt')
 
-    x, Z, err = solve_lp(
-        is_max, func_coeffs, table, free_vars
-    )
+    x, Z, err = solve_lp(is_max, func_coeffs, table, free_vars)
 
     if err:
         print("Ошибка:", err)
