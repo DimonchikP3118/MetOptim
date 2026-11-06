@@ -64,12 +64,15 @@ def piyavskii(f, a, b, L, eps, max_iters=10000):
             raise ValueError("Получено некорректное значение функции")
 
         gap = y_new - lower
+        tolerance = 1e-12 * max(1.0, abs(y_new), abs(lower))
 
-        if gap < 0:
+        if gap < -tolerance:
             raise ValueError(
                 f"L слишком маленькая: функция ниже ломаной "
-                f"(зазор {gap:.6g}). Увеличьте L и повторите поиск")
+                f"(зазор {gap:.6g}). Увеличьте L и повторите поиск"
+            )
 
+        gap = max(gap, 0.0)
         reached = gap < eps
 
         if not reached and not xs[i] < x_new < xs[i + 1]:
@@ -85,6 +88,7 @@ def piyavskii(f, a, b, L, eps, max_iters=10000):
     elapsed = time.perf_counter() - start
 
     return xs[best], ys[best], iteration, elapsed, xs, ys, reached
+
 
 def main():
     formula = input("Введите f(x): ").strip().replace("^", "**")
@@ -113,7 +117,9 @@ def main():
 
         L = constant(f, a, b)
 
-        x_min, f_min, iterations, elapsed, xs, ys, reached = piyavskii(f, a, b, L, eps,)
+        x_min, f_min, iterations, elapsed, xs, ys, reached = piyavskii(
+            f, a, b, L, eps
+        )
 
         if reached:
             print("Точность достигнута")
@@ -143,7 +149,10 @@ def main():
         plt.figure(figsize=(10, 5))
         plt.plot(x_plot, y_plot, label="Функция")
         plt.plot(broken_x, broken_y, "--", color="green", label="Итоговая ломаная")
-        plt.scatter(x_min, f_min, color="red", s=60, label="Лучшая найденная точка", zorder=3)
+        plt.scatter(
+            x_min, f_min, color="red", s=60,
+            label="Лучшая найденная точка", zorder=3
+        )
 
         plt.xlabel("x")
         plt.ylabel("f(x)")
@@ -158,8 +167,9 @@ def main():
         plt.tight_layout()
         plt.show()
 
-    except (ValueError, NameError, TypeError, ZeroDivisionError, OverflowError) as error:
-        print(f"Ошибка: {error}")
+    except Exception as error:
+        print(f"Ошибка ({type(error).__name__}): {error}")
+
 
 if __name__ == "__main__":
     main()
