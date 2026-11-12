@@ -204,7 +204,7 @@ def classify(variables, f, constraints, multipliers, L, jacobian, candidates):
             extrema[name] = {"status": "exists", "value": value, "points": points}
             sign = "положительно" if name == "minimum" else "отрицательно"
             reasons.append(f"Гессиан квадратичного лагранжиана при найденных множителях {sign} полуопределён: "
-                           f"это доказывает глобальность {'минимума' if name == 'minimum' else 'максимума'}.")
+                           f"\n  это доказывает глобальность {'минимума' if name == 'minimum' else 'максимума'}.")
         else:
             extrema[name] = {"status": "unknown", "points": []}
 
@@ -261,8 +261,8 @@ def classify(variables, f, constraints, multipliers, L, jacobian, candidates):
             raise ValueError("Путь на бесконечности противоречит найденному экстремуму.")
         extrema[name] = {"status": "absent", "points": []}
         reasons.append(f"Вдоль допустимого пути {path['point']} при достаточно больших |t| "
-                       f"функция равна {path['phi']}; "
-                       f"пределы {path['limits']}, поэтому {'минимума' if name == 'minimum' else 'максимума'} нет.")
+                       f"\n  функция равна {path['phi']}; "
+                       f"\n  пределы {path['limits']}, поэтому {'минимума' if name == 'minimum' else 'максимума'} нет.")
     return extrema, reasons, paths
 
 def solve_lab(variables, f, constraints):
